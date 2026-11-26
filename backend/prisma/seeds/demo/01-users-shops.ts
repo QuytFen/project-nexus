@@ -5,7 +5,6 @@
  * point is for somebody to sign in as each role and look around. That is safe
  * only because this seed refuses to run against production.
  */
-import { randomBytes } from 'node:crypto';
 import * as bcrypt from 'bcrypt';
 import { PrismaClient, ReputationTrustLevel, Role, WalletType, type Prisma } from '@prisma/client';
 import { DemoClock, SeededRandom } from './random';
@@ -22,9 +21,7 @@ import { DemoClock, SeededRandom } from './random';
 export function resolveDemoPassword(): string {
   const pinned = process.env.DEMO_SEED_PASSWORD?.trim();
   if (pinned) return pinned;
-  // Mixed case, digits and a symbol, so it satisfies the registration rules
-  // the application enforces on a real password.
-  return `Demo-${randomBytes(6).toString('base64url')}-2026!`;
+  return 'Demo@123456';
 }
 
 export interface DemoPerson {
@@ -36,8 +33,10 @@ export interface DemoPerson {
 }
 
 export interface DemoPeople {
-  /** The shared password this run generated. */
+  /** The shared password for non-admin demo accounts. */
   password: string;
+  /** The password for the seeded admin account. */
+  adminPassword: string;
   admin: DemoPerson;
   staff: DemoPerson[];
   sellers: DemoPerson[];
@@ -49,6 +48,7 @@ interface PersonSpec {
   email: string;
   fullName: string;
   role: Role;
+  password?: string;
   isSellerActive?: boolean;
   shopName?: string;
   reputation: number;
@@ -58,32 +58,33 @@ interface PersonSpec {
 
 const PEOPLE: PersonSpec[] = [
   {
-    email: 'demo.admin@nexus.local',
-    fullName: 'Trần Quốc Quản',
+    email: 'admin@nexus.com',
+    fullName: 'System Admin',
     role: Role.ADMIN,
+    password: 'Admin@123456',
     reputation: 100,
     trustLevel: ReputationTrustLevel.EXCELLENT,
     walletBalance: 0,
   },
   {
-    email: 'demo.staff@nexus.local',
-    fullName: 'Lê Thị Hỗ Trợ',
+    email: 'quyetfen@staff.com',
+    fullName: 'QuyetFen',
     role: Role.SUPPORT_STAFF,
     reputation: 90,
     trustLevel: ReputationTrustLevel.EXCELLENT,
     walletBalance: 0,
   },
   {
-    email: 'demo.staff2@nexus.local',
-    fullName: 'Phạm Văn Trực',
+    email: 'kimcuong@staff.com',
+    fullName: 'Kim Cường',
     role: Role.SUPPORT_STAFF,
     reputation: 85,
     trustLevel: ReputationTrustLevel.GOOD,
     walletBalance: 0,
   },
   {
-    email: 'demo.seller@nexus.local',
-    fullName: 'Nguyễn Minh Cổ',
+    email: 'jos.seller@gmail.com',
+    fullName: 'Jos',
     role: Role.SELLER,
     isSellerActive: true,
     shopName: 'Cổ Vật Hà Thành',
@@ -92,8 +93,8 @@ const PEOPLE: PersonSpec[] = [
     walletBalance: 12_500_000,
   },
   {
-    email: 'demo.seller2@nexus.local',
-    fullName: 'Đỗ Thu Sương',
+    email: 'huy.seller@gmail.com',
+    fullName: 'Huy',
     role: Role.SELLER,
     isSellerActive: true,
     shopName: 'Sương Mai Antique',
@@ -112,16 +113,16 @@ const PEOPLE: PersonSpec[] = [
     walletBalance: 2_800_000,
   },
   {
-    email: 'demo.buyer@nexus.local',
-    fullName: 'Hoàng Gia Bảo',
+    email: 'lien.buyer@gmail.com',
+    fullName: 'Liên',
     role: Role.BUYER,
     reputation: 72,
     trustLevel: ReputationTrustLevel.GOOD,
     walletBalance: 9_000_000,
   },
   {
-    email: 'demo.buyer2@nexus.local',
-    fullName: 'Bùi Khánh Linh',
+    email: 'cuong.buyer@gmail.com',
+    fullName: 'Cường',
     role: Role.BUYER,
     reputation: 64,
     trustLevel: ReputationTrustLevel.GOOD,
@@ -169,12 +170,20 @@ export async function seedUsersAndShops(
   random: SeededRandom,
 ): Promise<DemoPeople> {
   const password = resolveDemoPassword();
-  const passwordHash = await bcrypt.hash(password, 10);
+  const adminPassword = process.env.DEMO_SEED_PASSWORD?.trim() || 'Admin@123456';
+  const defaultHash = await bcrypt.hash(password, 10);
+  const adminHash = await bcrypt.hash(adminPassword, 10);
   const created: DemoPerson[] = [];
 
   for (const [index, spec] of PEOPLE.entries()) {
     const place = CITIES[index % CITIES.length];
     const isSeller = spec.role === Role.SELLER;
+    const passwordHash =
+      spec.password === 'Admin@123456'
+        ? adminHash
+        : spec.password
+          ? await bcrypt.hash(spec.password, 10)
+          : defaultHash;
 
     const data: Prisma.UserCreateInput = {
       email: spec.email,
@@ -237,6 +246,7 @@ export async function seedUsersAndShops(
 
   return {
     password,
+    adminPassword,
     admin,
     staff: created.filter((person) => person.role === Role.SUPPORT_STAFF),
     sellers: created.filter((person) => person.role === Role.SELLER),

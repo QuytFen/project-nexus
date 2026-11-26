@@ -179,8 +179,9 @@ async function main(): Promise<void> {
     );
 
     console.log('');
-    console.log('Demo accounts (one shared password):');
-    console.log(`  password: ${people.password}`);
+    console.log('Demo accounts:');
+    console.log(`  admin password: ${people.adminPassword}`);
+    console.log(`  demo password:  ${people.password}`);
     for (const person of [people.admin, ...people.staff, ...people.sellers, ...people.buyers]) {
       console.log(`  ${person.role.padEnd(14)} ${person.email}`);
     }
